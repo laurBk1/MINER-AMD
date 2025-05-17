@@ -34,50 +34,58 @@ BTCW_CUDA_MINER.exe 2
 start the gpu miner for gpu number 3
 ```
 BTCW_CUDA_MINER.exe 3
+```  
+
+Here is a typical output when mining
+```
+Bitcoin-PoW GPU Miner v26.5.4
+
+Hash found - NONCE: 0707070707070707
+
+Hash no sig low64: 6bfb0091a42a80d9
+
+CONNECTED TO BTCW NODE WALLET
+
+
+=======================================================
+Device: NVIDIA GeForce RTX 4080 SUPER
+-------------------------------------------------------
+Hashrate: 18415616.000000 H/s
+=======================================================
+```  
+
+Here is a typical output when NOT mining
+```
+Bitcoin-PoW GPU Miner v26.5.4
+
+Hash found - NONCE: 839e7000000c4128
+
+Hash no sig low64: 0000000000000000
+
+!!! NOT CONNECTED TO BTCW NODE WALLET !!!  ---> Make sure your wallet has at least 1 utxo.
+!!! NOT CONNECTED TO BTCW NODE WALLET !!!  ---> Make sure your wallet has at least 1 utxo.
+!!! NOT CONNECTED TO BTCW NODE WALLET !!!  ---> Make sure your wallet has at least 1 utxo.
+
+
+=======================================================
+Device: NVIDIA GeForce RTX 4080 SUPER
+-------------------------------------------------------
+Hashrate: 0.000000 H/s
+=======================================================
+
 ```
 
-Here is a typical output when running
+# Building
+[PDCurses is needed](https://github.com/wmcbrine/PDCurses)
 ```
-====GOING to STAGE2 NOW====:11774
-====GOING to STAGE2 NOW====:11775
-STAGE2 BLOCK DATA UPDATED - DEVICE
-STAGE2 BLOCK DATA - CPU SIDE
-STAGE2 BLOCK DATA - CPU SIDE
-STAGE2 BLOCK DATA - CPU SIDE
-STAGE2 BLOCK DATA - CPU SIDE
-STAGE2 BLOCK DATA - CPU SIDE
-STAGE2 BLOCK DATA - CPU SIDE
-STAGE2 BLOCK DATA UPDATED - DEVICE
-STAGE2 BLOCK DATA - CPU SIDE
-STAGE2 BLOCK DATA - CPU SIDE
-STAGE2 BLOCK DATA - CPU SIDE
-STAGE2 BLOCK DATA - CPU SIDE
-STAGE2 BLOCK DATA - CPU SIDE
-STAGE2 BLOCK DATA - CPU SIDE
-STAGE2 BLOCK DATA UPDATED - DEVICE
-STAGE2 BLOCK DATA - CPU SIDE
-STAGE2 BLOCK DATA - CPU SIDE
-STAGE2 BLOCK DATA - CPU SIDE
-STAGE2 BLOCK DATA - CPU SIDE
-STAGE2 BLOCK DATA - CPU SIDE
-========================PoW BLOCK FOUND========================
-THREAD: 000000000000044d
-NONCE: 8044d14000017afc
-============OUTPUT HASH============
-FA01128B45CF6B61349580F12631389BD1D68AFCD9A24EFD2701ADD700000000
-
-STAGE2 BLOCK DATA - CPU SIDE
-STAGE2 BLOCK DATA UPDATED - DEVICE
-
-STAGE2 BLOCK DATA - CPU SIDE
-STAGE2 BLOCK DATA - CPU SIDE
-STAGE2 BLOCK DATA - CPU SIDE
-STAGE2 BLOCK DATA - CPU SIDE
-STAGE2 BLOCK DATA - CPU SIDE
-STAGE2 BLOCK DATA - CPU SIDE
-STAGE2 BLOCK DATA UPDATED - DEVICE
-STAGE2 BLOCK DATA - CPU SIDE
-STAGE2 BLOCK DATA - CPU SIDE
-
-
+git clone https://github.com/wmcbrine/PDCurses.git
 ```
+
+Open an x64 Native Tools command prompt for visual studio and build from wincon folder
+```
+nmake -f Makefile.vc clean
+nmake -f Makefile.vc
+```
+
+Look for USERNAME in BTCW_CUDA_MINER.vcxproj using text editor and put correct location for PDCurses paths.  
+Build using visual studio

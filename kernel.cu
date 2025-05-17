@@ -5,13 +5,17 @@
 #include <vector>
 #include <random>
 #include <cuda.h>
+#include <cuda_runtime.h>
 #include <cstring>  // For memcpy
 
 #include <windows.h>
+
+#include <curses.h>
+
 #define SHM_NAME "/shared_mem"
 
 
-const int CTX_SIZE_BYTES = 8 * 20; // 160
+const int CTX_SIZE_BYTES = 8*20; // 160
 const int KEY_SIZE_BYTES = 32;
 const int HASH_NO_SIG_SIZE_BYTES = 32;
 const int TOTAL_BYTES_SEND = CTX_SIZE_BYTES + KEY_SIZE_BYTES + HASH_NO_SIG_SIZE_BYTES;
@@ -27,10 +31,10 @@ const int TOTAL_BYTES_SEND = CTX_SIZE_BYTES + KEY_SIZE_BYTES + HASH_NO_SIG_SIZE_
 
 /**************************** DATA TYPES ****************************/
 typedef struct {
-    BYTE data[64];
-    WORD datalen;
-    unsigned long long bitlen;
-    WORD state[8];
+	BYTE data[64];
+	WORD datalen;
+	unsigned long long bitlen;
+	WORD state[8];
 } CUDA_SHA256_CTX;
 
 
@@ -40,15 +44,29 @@ struct SharedData {
 };
 
 
+
+//extern __global__ void cuda_miner(BYTE* d_gpu_num, BYTE* key_data, BYTE* ctx_data, BYTE* hash_no_sig_in, BYTE* nonce4host, BYTE* nonce4hashrate );
+
 // Define a struct to represent a uint256 (256-bit integer)
 struct uint256 {
     uint64_t data[4];  // Array to hold four 64-bit parts
 };
 
-int main(int argc, char* argv[]) {
+
+#include <iostream>
+#include <thread>
+#include <chrono>
+#include <atomic>
+
+
+
+volatile uint64_t nonce4hashrate = 0;
+volatile uint64_t nonce4hashrate_prev = 0;
+
+int main( int argc, char* argv[] ) {
 
     int gpu_num = 0; // default
-    if (argc == 2)
+    if ( argc == 2 )
     {
         gpu_num = (int)atoi(argv[1]);
     }
@@ -74,11 +92,11 @@ int main(int argc, char* argv[]) {
     // Get the kernel function
     // Use the mangled name
     // cat kernel.ptx  | grep cuda_miner
-    // .globl	_Z10cuda_minerPhS_S_S_S_
-    cuModuleGetFunction(&cuFunction, cuModule, "_Z10cuda_minerPhS_S_S_S_");
+	// .globl	_Z10cuda_minerPhS_S_S_S_
+    cuModuleGetFunction(&cuFunction, cuModule, "_Z10cuda_minerPhS_S_S_S_S_");
 
 
-    const int CTX_SIZE_BYTES = 8 * 20; // 160
+    const int CTX_SIZE_BYTES = 8*20; // 160
     const int KEY_SIZE_BYTES = 32;
     const int HASH_NO_SIG_SIZE_BYTES = 32;
     const int TOTAL_BYTES_SEND = CTX_SIZE_BYTES + KEY_SIZE_BYTES + HASH_NO_SIG_SIZE_BYTES;
@@ -88,24 +106,30 @@ int main(int argc, char* argv[]) {
 
     //uint8_t *d_gpu_num;
     // Allocate pinned host memory  
-    void* h_gpu_num;
-    cuMemHostAlloc(&h_gpu_num, 1, CU_MEMHOSTALLOC_PORTABLE);
+    void *h_gpu_num;
+    cuMemHostAlloc(&h_gpu_num, 1, CU_MEMHOSTALLOC_PORTABLE);      
     *static_cast<uint8_t*>(h_gpu_num) = static_cast<uint8_t>(gpu_num);
 
     //////////////////////STAGE2==================
 
     //uint8_t *d_ctx_data;
-    uint8_t* h_ctx_data = new uint8_t[CTX_SIZE_BYTES];
+    uint8_t *h_ctx_data = new uint8_t[CTX_SIZE_BYTES];
+
 
     //uint8_t *d_key_data;
-    uint8_t* h_key_data = new uint8_t[KEY_SIZE_BYTES];
+    uint8_t *h_key_data = new uint8_t[KEY_SIZE_BYTES];    
+
+
 
     //uint8_t *d_hash_no_sig_data;
-    uint8_t* h_hash_no_sig_data = new uint8_t[HASH_NO_SIG_SIZE_BYTES];
+    uint8_t *h_hash_no_sig_data = new uint8_t[HASH_NO_SIG_SIZE_BYTES];      
+
 
     //uint8_t *d_nonce_data;
-    uint8_t* h_nonce_data = new uint8_t[NONCE_SIZE_BYTES];
+    uint8_t *h_nonce_data = new uint8_t[NONCE_SIZE_BYTES];      
 
+    //uint8_t *d_nonce4hashrate_data;
+    uint8_t *h_nonce4hashrate_data = new uint8_t[NONCE_SIZE_BYTES];   
     ///////////////////////////////////////////////////////////////////////////
 
 
@@ -115,7 +139,7 @@ int main(int argc, char* argv[]) {
     cudaDeviceProp deviceProps;
     cudaGetDeviceProperties(&deviceProps, deviceId);
 
-    std::cout << "BTCW GPU MINER RELEASE v26.5.3 - May 8 2025" << std::endl;
+    std::cout << "BTCW GPU MINER RELEASE v26.5.99 - May 8 2025" << std::endl;
 
     std::cout << "Max threads per block: " << deviceProps.maxThreadsPerBlock << std::endl;
 
@@ -126,36 +150,78 @@ int main(int argc, char* argv[]) {
     printf("Max grid size in Z: %d\n", deviceProps.maxGridSize[2]); // z-dimension
 
 
+
+
+
+    int deviceCount = 0;
+    cudaError_t err = cudaGetDeviceCount(&deviceCount);
+
+    if (err != cudaSuccess) {
+        std::cerr << "Error getting CUDA device count: " << cudaGetErrorString(err) << std::endl;
+        return 1;
+    }
+
+    if (deviceCount == 0) {
+        std::cout << "No CUDA-capable devices found." << std::endl;
+        return 0;
+    }
+
+    std::cout << "Found " << deviceCount << " CUDA-capable device(s):\n";
+    cudaDeviceProp prop;
+    for (int i = 0; i < deviceCount; ++i) {
+        //cudaDeviceProp prop;
+        cudaGetDeviceProperties(&prop, i);
+
+        std::cout << "Device " << i << ": " << prop.name << "\n"
+                  << "  Compute capability: " << prop.major << "." << prop.minor << "\n"
+                  << "  Total global memory: " << prop.totalGlobalMem / (1024 * 1024) << " MB\n"
+                  << "  Multiprocessors: " << prop.multiProcessorCount << "\n"
+                  << "  Clock rate: " << prop.clockRate / 1000 << " MHz\n"
+                  << "  Memory Clock Rate (KHz): " << prop.memoryClockRate << "\n"
+                  << "  Memory Bus Width (bits): " << prop.memoryBusWidth << "\n"
+                  << "  Max threads per block: " << prop.maxThreadsPerBlock << "\n"
+                  << "  Max grid size: [" << prop.maxGridSize[0] << ", "
+                                         << prop.maxGridSize[1] << ", "
+                                         << prop.maxGridSize[2] << "]\n"
+                  << "  Max threads dim: [" << prop.maxThreadsDim[0] << ", "
+                                          << prop.maxThreadsDim[1] << ", "
+                                          << prop.maxThreadsDim[2] << "]\n\n";
+    }
+
+
+
     // Allocate memory on the device
     //cudaMalloc(&d_gpu_num, 1);
     CUdeviceptr d_gpu_num;
-    cuMemAlloc(&d_gpu_num, 1);
+    cuMemAlloc(&d_gpu_num, 1);    
 
 
     // Allocate memory on the device
     //cudaMalloc(&d_ctx_data, CTX_SIZE_BYTES);
     CUdeviceptr d_ctx_data;
-    cuMemAlloc(&d_ctx_data, CTX_SIZE_BYTES);
+    cuMemAlloc(&d_ctx_data, CTX_SIZE_BYTES);        
 
 
     // Allocate memory on the device
     //cudaMalloc(&d_key_data, KEY_SIZE_BYTES);
     CUdeviceptr d_key_data;
-    cuMemAlloc(&d_key_data, KEY_SIZE_BYTES);
+    cuMemAlloc(&d_key_data, KEY_SIZE_BYTES);       
 
 
     // Allocate memory on the device
     //cudaMalloc(&d_hash_no_sig_data, HASH_NO_SIG_SIZE_BYTES);
     CUdeviceptr d_hash_no_sig_data;
-    cuMemAlloc(&d_hash_no_sig_data, HASH_NO_SIG_SIZE_BYTES);
-
+    cuMemAlloc(&d_hash_no_sig_data, HASH_NO_SIG_SIZE_BYTES);      
+ 
 
     // Allocate memory on the device
     //cudaMalloc(&d_nonce_data, NONCE_SIZE_BYTES);
     CUdeviceptr d_nonce_data;
-    cuMemAlloc(&d_nonce_data, NONCE_SIZE_BYTES);
+    cuMemAlloc(&d_nonce_data, NONCE_SIZE_BYTES);   
 
 
+    CUdeviceptr d_nonce4hashrate_data;
+    cuMemAlloc(&d_nonce4hashrate_data, NONCE_SIZE_BYTES);   
 
     CUstream stream, kernel_stream;
     cuStreamCreate(&kernel_stream, 0);
@@ -164,7 +230,7 @@ int main(int argc, char* argv[]) {
 
     //===========================================KERNEL======================================================
     // We are starting the KERNEL with NO DATA - This is intentional, data will be given to it on the fly from the BTCW node.
-    //__global__ void cuda_miner(BYTE* d_gpu_num, BYTE* key_data, BYTE* ctx_data, BYTE* hash_no_sig_in, BYTE* nonce4host )
+    //__global__ void cuda_miner<<<128, 256, 0, kernel_stream>>>(d_gpu_num, d_key_data, d_ctx_data, d_hash_no_sig_data, d_nonce_data, d_nonce4hashrate_data);
 
 
     void* args[] = {
@@ -172,9 +238,10 @@ int main(int argc, char* argv[]) {
         &d_key_data,
         &d_ctx_data,
         &d_hash_no_sig_data,
-        &d_nonce_data
-    };
-
+        &d_nonce_data,
+        &d_nonce4hashrate_data
+    };    
+    
     res = cuLaunchKernel(
         cuFunction,
         128, 1, 1,     // Grid dimensions
@@ -257,64 +324,85 @@ int main(int argc, char* argv[]) {
 #endif
 
 
-    uint256 hash_no_sig;
-
     uint64_t* p_data = (uint64_t*)shared_data->data;
 
 
     // Cast to the volatile pointer to ensure we don't optimize reads/writes
     volatile SharedData* mapped_data = (volatile SharedData*)shared_data;
 
+    int hashrate = 10000;
+
+
+
     // Tell the miner which GPU number it is
     //cudaMemcpyAsync(d_gpu_num, h_gpu_num, 1, cudaMemcpyHostToDevice, stream);
     // Async copy device -> host
-    cuMemcpyHtoDAsync(d_gpu_num, h_gpu_num, 1, stream);
+    cuMemcpyHtoDAsync(d_gpu_num, h_gpu_num, 1, stream);  
 
     uint32_t throttle = 0x0;
+    initscr();            // Start ncurses mode
+    noecho();             // Don't echo keypresses
+    curs_set(FALSE);      // Hide the cursor
 
-    while (true)
+    int prev_y, prev_x;
+    int curr_y, curr_x;
+    getmaxyx(stdscr, prev_y, prev_x);  // Initial size
+    mvprintw(0, 0, "Bitcoin-PoW GPU Miner v26.5.4\n");
+
+    volatile uint64_t nonce_prev = 1234;
+    nonce4hashrate_prev = 12345;
+    static uint64_t hash_no_sig = 0;
+    while ( true )
     {
 
-        if ((throttle % 0x3) == 0)
-        {
+    int changeCount = 0;
 
-            //Host update the data, send it to the GPU
-            printf("STAGE2 BLOCK DATA - CPU SIDE\n");
+    const int durationSeconds = 2; // Run for 2 seconds
+    auto startTime = std::chrono::steady_clock::now();        
 
+        while (std::chrono::steady_clock::now() - startTime < std::chrono::seconds(durationSeconds)) 
+        {        
+            
+            if ( (throttle % 0x3) == 0 )
+            {
 
-            // Data set from BTCW node
-            memcpy(&h_key_data[0], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[0])), 32);
-
-
-            memcpy(&h_ctx_data[0], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[32])), 8);
-            memcpy(&h_ctx_data[8], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[40])), 8);
-            memcpy(&h_ctx_data[16], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[48])), 8);
-            memcpy(&h_ctx_data[24], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[56])), 8);
-
-            memcpy(&h_ctx_data[32], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[64])), 8);
-            memcpy(&h_ctx_data[40], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[72])), 8);
-            memcpy(&h_ctx_data[48], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[80])), 8);
-            memcpy(&h_ctx_data[56], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[88])), 8);
-            memcpy(&h_ctx_data[64], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[96])), 8);
-            memcpy(&h_ctx_data[72], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[104])), 8);
-            memcpy(&h_ctx_data[80], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[112])), 8);
-            memcpy(&h_ctx_data[88], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[120])), 8);
-            memcpy(&h_ctx_data[96], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[128])), 8);
-            memcpy(&h_ctx_data[104], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[136])), 8);
-            memcpy(&h_ctx_data[112], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[144])), 8);
-            memcpy(&h_ctx_data[120], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[152])), 8);
-            memcpy(&h_ctx_data[128], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[160])), 8);
-            memcpy(&h_ctx_data[136], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[168])), 8);
-            memcpy(&h_ctx_data[144], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[176])), 8);
-
-            memcpy(&h_ctx_data[152], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[184])), 4);
-            memcpy(&h_ctx_data[156], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[188])), 4);
+                //Host update the data, send it to the GPU
+                //printf("STAGE2 BLOCK DATA - CPU SIDE\n");
 
 
-            memcpy(&h_hash_no_sig_data[0], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[192])), 8);
-            memcpy(&h_hash_no_sig_data[8], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[200])), 8);
-            memcpy(&h_hash_no_sig_data[16], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[208])), 8);
-            memcpy(&h_hash_no_sig_data[24], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[216])), 8);
+                // Data set from BTCW node
+                memcpy( &h_key_data[0], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[0])), 32 );
+
+
+                memcpy( &h_ctx_data[0],  const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[32])), 8 );
+                memcpy( &h_ctx_data[8],  const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[40])), 8 );
+                memcpy( &h_ctx_data[16], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[48])), 8 );
+                memcpy( &h_ctx_data[24], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[56])), 8 );
+
+                memcpy( &h_ctx_data[32],  const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[64])), 8 );
+                memcpy( &h_ctx_data[40],  const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[72])), 8 );
+                memcpy( &h_ctx_data[48],  const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[80])), 8 );
+                memcpy( &h_ctx_data[56],  const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[88])), 8 );
+                memcpy( &h_ctx_data[64],  const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[96])), 8 );
+                memcpy( &h_ctx_data[72],  const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[104])), 8 );
+                memcpy( &h_ctx_data[80],  const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[112])), 8 );
+                memcpy( &h_ctx_data[88],  const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[120])), 8 );
+                memcpy( &h_ctx_data[96],  const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[128])), 8 );
+                memcpy( &h_ctx_data[104], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[136])), 8 );
+                memcpy( &h_ctx_data[112], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[144])), 8 );
+                memcpy( &h_ctx_data[120], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[152])), 8 );
+                memcpy( &h_ctx_data[128], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[160])), 8 );
+                memcpy( &h_ctx_data[136], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[168])), 8 );
+                memcpy( &h_ctx_data[144], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[176])), 8 );
+
+                memcpy( &h_ctx_data[152], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[184])), 4 );
+                memcpy( &h_ctx_data[156], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[188])), 4 );
+
+
+                memcpy( &h_hash_no_sig_data[0],  const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[192])), 8);
+                memcpy( &h_hash_no_sig_data[8],  const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[200])), 8);
+                memcpy( &h_hash_no_sig_data[16], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[208])), 8);
+                memcpy( &h_hash_no_sig_data[24], const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[216])), 8);
 
 
             // Copy the modified data from the host back to the GPU asynchronously  
@@ -325,18 +413,106 @@ int main(int argc, char* argv[]) {
             cuMemcpyHtoDAsync(d_key_data, h_key_data, KEY_SIZE_BYTES, stream);
 
             //cudaMemcpyAsync(d_hash_no_sig_data, h_hash_no_sig_data, HASH_NO_SIG_SIZE_BYTES, cudaMemcpyHostToDevice, stream);   
-            cuMemcpyHtoDAsync(d_hash_no_sig_data, h_hash_no_sig_data, HASH_NO_SIG_SIZE_BYTES, stream);
+            cuMemcpyHtoDAsync(d_hash_no_sig_data, h_hash_no_sig_data, HASH_NO_SIG_SIZE_BYTES, stream); 
+
+            }
+
+            throttle++;
+
+            cuMemcpyDtoHAsync(const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->nonce)), d_nonce_data, NONCE_SIZE_BYTES, stream);
+            cuMemcpyDtoHAsync(const_cast<void*>(reinterpret_cast<const volatile void*>(&nonce4hashrate)), d_nonce4hashrate_data, NONCE_SIZE_BYTES, stream); 
+
+            //printf("STAGE2 BLOCK DATA UPDATED - DEVICE\n");
+
+
+
+            
+            getmaxyx(stdscr, curr_y, curr_x);
+
+            if (curr_y != prev_y || curr_x != prev_x) {
+                clear(); // Screen size changed — clear and redraw
+                prev_y = curr_y;
+                prev_x = curr_x;
+                mvprintw(0, 0, "Bitcoin-PoW GPU Miner v26.5.4\n");
+            }
+
+            if ( nonce_prev != shared_data->nonce )
+            {
+                nonce_prev = shared_data->nonce;
+                mvprintw(2, 0, "Hash found - NONCE: %016llx\n", nonce_prev);
+            }        
+
+
+            
+            memcpy( &hash_no_sig,  const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->data[192])), 8);
+            // Always show the current hash no signature
+            mvprintw(4, 0, "Hash no sig low64: %016llx\n", hash_no_sig);
+
+            if ( hash_no_sig == 0 )
+            {
+                
+                mvprintw(6, 0, "!!! NOT CONNECTED TO BTCW NODE WALLET !!!  ---> Make sure your wallet has at least 1 utxo.\n");
+                mvprintw(7, 0, "!!! NOT CONNECTED TO BTCW NODE WALLET !!!  ---> Make sure your wallet has at least 1 utxo.\n");
+                mvprintw(8, 0, "!!! NOT CONNECTED TO BTCW NODE WALLET !!!  ---> Make sure your wallet has at least 1 utxo.\n");
+
+                // Try to open shared memory again
+                // Map the view of the file into the process's address space
+                shared_data = (SharedData*)MapViewOfFile(
+                    hMapFile,            // Handle to mapping object
+                    FILE_MAP_ALL_ACCESS, // Read/write permission
+                    0,
+                    0,
+                    sizeof(SharedData)
+                );
+
+                if (shared_data == NULL) {
+                    std::cerr << "Could not map view of file: " << GetLastError() << std::endl;
+                }
+                Sleep(1000);
+                                
+            }
+            else
+            {
+                // remove warning
+                mvprintw(6, 0, "CONNECTED TO BTCW NODE WALLET\n");
+                mvprintw(7, 0, "\n");
+                mvprintw(8, 0, "\n");
+            }
+
+
+
+
+            if (nonce4hashrate != nonce4hashrate_prev) {
+                changeCount++;
+                nonce4hashrate_prev = nonce4hashrate;
+            }
+
+
+
+            //Sleep(1);
 
         }
 
-        throttle++;
 
-        //cudaMemcpyAsync(const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->nonce)), d_nonce_data, NONCE_SIZE_BYTES, cudaMemcpyDeviceToHost, stream); 
-        cuMemcpyDtoHAsync(const_cast<void*>(reinterpret_cast<const volatile void*>(&shared_data->nonce)), d_nonce_data, NONCE_SIZE_BYTES, stream);
+        double rate = static_cast<double>(changeCount) / durationSeconds;
+        rate *= 65536;
 
-        Sleep(500);
+        if ( hash_no_sig == 0 )
+        {
+            rate = 0;
+        }        
+
+        // Always show status at the bottom
+        mvprintw(curr_y - 5, 0, "=======================================================\n");
+        mvprintw(curr_y - 4, 0, "Device: %s\n", prop.name);
+        mvprintw(curr_y - 3, 0, "-------------------------------------------------------\n");
+        mvprintw(curr_y - 2, 0, "Hashrate: %lf H/s\n", rate);
+        mvprintw(curr_y - 1, 0, "=======================================================\n");
+        refresh();
+
 
     }
+
 
 
 
@@ -356,6 +532,8 @@ int main(int argc, char* argv[]) {
     cuMemFree(d_nonce_data);
     delete[] h_nonce_data;
 
+    cuMemFree(d_nonce4hashrate_data);
+    delete[] h_nonce4hashrate_data;
 
     cuStreamDestroy(stream);
     cuStreamDestroy(kernel_stream);
