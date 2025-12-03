@@ -1,0 +1,254 @@
+═══════════════════════════════════════════════════════════════════════
+BTCW MINER AMD - SETUP COMPLET PENTRU RX 598
+═══════════════════════════════════════════════════════════════════════
+
+✅ CE A FOST CREAT:
+
+1. miner_amd.cpp - Miner complet OpenCL (compatibil RX 598)
+2. RUN_AMD_MINER.bat - Script de pornire
+3. SETUP_MINER_AMD.txt - Acest ghid
+
+═══════════════════════════════════════════════════════════════════════
+🚀 INSTALARE - PASUL 1: DRIVERE AMD
+═══════════════════════════════════════════════════════════════════════
+
+1. Descarcă driver AMD pentru RX 598:
+   https://www.amd.com/en/support
+
+2. Selectează "AMD Radeon RX 598"
+
+3. Instalează DRIVERUL COMPLET (nu minimal)
+
+4. REPORNEȘTE PC-ul
+
+5. Verifică în Device Manager:
+   - Deschide: Windows + X → Device Manager
+   - Expandează "Display adapters"
+   - Trebuie să vezi "AMD Radeon RX 598" ✓
+
+═══════════════════════════════════════════════════════════════════════
+🚀 INSTALARE - PASUL 2: OPENCL SDK (Optional dar recomandat)
+═══════════════════════════════════════════════════════════════════════
+
+OpenCL vine cu driverele AMD, dar dacă vrei explicit:
+
+1. Descarcă AMD APP SDK:
+   https://github.com/GPUOpen-LibrariesAndSDKs/OCL-SDK/releases
+
+2. Instalează pe C:\AMD_APP_SDK\ (sau locație preferată)
+
+3. Set environment variable:
+   set AMDAPPSDKROOT=C:\AMD_APP_SDK
+
+═══════════════════════════════════════════════════════════════════════
+🚀 INSTALARE - PASUL 3: VISUAL STUDIO + CMAKE
+═══════════════════════════════════════════════════════════════════════
+
+1. Descarcă Visual Studio 2022 Community:
+   https://visualstudio.microsoft.com/downloads/
+
+2. Instalează cu:
+   ☑ Desktop development with C++
+   ☑ C++ CMake tools for Windows
+
+3. Descarcă CMake:
+   https://cmake.org/download/
+
+4. Instalează CMake și bifează "Add to PATH"
+
+5. Verificare:
+   cmd> cmake --version
+   cmd> where cl
+
+   Ambele trebuie să returneze path-uri valide ✓
+
+═══════════════════════════════════════════════════════════════════════
+🔧 COMPILARE - PASUL 4: BUILD MINERUL
+═══════════════════════════════════════════════════════════════════════
+
+OPȚIUNEA A - Compilare manuală cu Visual Studio:
+
+1. Deschide Visual Studio
+
+2. File → Open → Folder
+   Selectează folderul cu miner_amd.cpp
+
+3. File → CMake
+   Selectează CMakeLists.txt
+
+4. Build → Build All
+
+SAU
+
+OPȚIUNEA B - Compilare din Command Prompt:
+
+1. Deschide "x64 Native Tools Command Prompt for VS 2022"
+   (NU CMD normal - TREBUIE Native Tools!)
+
+2. Navighează la folder:
+   cd C:\path\to\gpu_miner_btcw_windows
+
+3. Compilează:
+   mkdir build_amd
+   cd build_amd
+   cmake .. -DENABLE_OPENCL=ON
+   cmake --build . --config Release
+
+4. Executabilul se creează în:
+   build_amd\Release\miner_amd.exe
+
+OPȚIUNEA C - Compilare RAPID (One-liner):
+
+   cl /O2 /I"%AMDAPPSDKROOT%\include" miner_amd.cpp /link OpenCL.lib /OUT:miner_amd.exe
+
+(Trebuie să fii în Native Tools Command Prompt)
+
+═══════════════════════════════════════════════════════════════════════
+⚡ RULARE - PASUL 5: PORNIM MINERUL
+═══════════════════════════════════════════════════════════════════════
+
+IMPORTANT: Vor trebui 2 terminale deschise!
+
+TERMINAL 1 - Wallet:
+─────────────────────
+cmd> bitcoin-pow-qt.exe -emergencymining=1
+
+Așteaptă ca blockchain-ul să se sincronizeze.
+
+În wallet: Window → Console
+Execută: generate
+
+Verifică în Console că se vede:
+"Mining block..."
+"Block found!"
+
+TERMINAL 2 - Miner AMD:
+─────────────────────
+cmd> cd C:\path\to\gpu_miner_btcw_windows
+cmd> miner_amd.exe 0
+
+Sau folosind script-ul:
+cmd> RUN_AMD_MINER.bat
+
+OUTPUT AȘTEPTAT:
+─────────────────
+BTCW GPU Miner AMD v26.6 (OpenCL)
+Device: AMD Radeon RX 598
+CONNECTED - Mining started...
+
+Dacă nu vezi "CONNECTED", înseamnă că wallet-ul nu minează.
+Repornește minerul după ce wallet-ul a găsit câteva blocuri.
+
+═══════════════════════════════════════════════════════════════════════
+🔍 TROUBLESHOOTING
+═══════════════════════════════════════════════════════════════════════
+
+PROBLEMA: "Clang compiler not found" la cmake
+─────────────────────────────────────────────
+SOLUȚIE: Rulează din "x64 Native Tools Command Prompt", NU din CMD normal
+
+PROBLEMA: "OpenCL.dll not found"
+─────────────────────────────────
+SOLUȚIE:
+1. Verifică că Driver AMD e instalat
+2. Verifică: C:\Windows\System32\OpenCL.dll trebuie să existe
+3. Reinstalează driverele AMD
+
+PROBLEMA: "Device not found"
+───────────────────────────
+SOLUȚIE:
+1. Rulează: clinfo.exe (descarcă de la https://github.com/Oblomov/clinfo/releases)
+2. Ar trebui să vezi GPU-ul tău listat
+3. Dacă nu apare, driverele nu sunt bine instalate
+
+PROBLEMA: Minerul rulează dar "Hash no sig = 0000..."
+──────────────────────────────────────────────────────
+SOLUȚIE:
+1. Wallet-ul nu minează sau nu are UTXO
+2. Repornește wallet-ul cu: bitcoin-pow-qt.exe -emergencymining=1
+3. În Console, execută: generate
+4. Așteaptă 10-20 secunde ca wallet-ul să înceapă mining
+5. Repornește minerul
+
+PROBLEMA: "ERROR: Cannot allocate memory on device"
+─────────────────────────────────────────────────────
+SOLUȚIE:
+1. GPU-ul nu are destulă memorie (trebuie min 4GB)
+2. Sluit alte aplicații care folosesc GPU
+3. Repornește PC
+
+═══════════════════════════════════════════════════════════════════════
+📊 PERFORMANȚĂ ESTIMATĂ
+═══════════════════════════════════════════════════════════════════════
+
+RX 598 8GB:
+- Hashrate: ~15-20 MH/s (depinde de optimizări)
+- Consum: ~180W
+- Temperatură: 65-75°C
+
+Comparație:
+┌──────────────┬─────────────┐
+│ GPU          │ Hashrate    │
+├──────────────┼─────────────┤
+│ RX 598 8GB   │ 15-20 MH/s  │
+│ RX 580 8GB   │ 12-18 MH/s  │
+│ RX 5700 XT   │ 25-35 MH/s  │
+│ RX 6700 XT   │ 30-45 MH/s  │
+└──────────────┴─────────────┘
+
+═══════════════════════════════════════════════════════════════════════
+✅ CHECKLIST FINAL
+═══════════════════════════════════════════════════════════════════════
+
+Înainte de mining, verifică:
+
+☐ Driver AMD instalat
+☐ OpenCL.dll există în System32
+☐ Visual Studio 2022 + C++ tools
+☐ CMake instalat și în PATH
+☐ miner_amd.exe compilat cu succes
+☐ bitcoin-pow-qt.exe rulează cu -emergencymining=1
+☐ Wallet are 1+ UTXO (comanda generate executată)
+☐ Minerul se conectează (vede "CONNECTED")
+☐ Hashrate > 0
+
+═══════════════════════════════════════════════════════════════════════
+🎯 COMENZI RAPIDE
+═══════════════════════════════════════════════════════════════════════
+
+# Compilare rapidă one-liner:
+cl /O2 miner_amd.cpp /link OpenCL.lib /OUT:miner_amd.exe
+
+# Lansare miner:
+miner_amd.exe 0
+
+# Multi-GPU (2 GPU-uri):
+start miner_amd.exe 0
+start miner_amd.exe 1
+
+# Verificare OpenCL:
+clinfo | findstr AMD
+
+# Kill miner:
+taskkill /IM miner_amd.exe /F
+
+═══════════════════════════════════════════════════════════════════════
+📞 SUPORT
+═══════════════════════════════════════════════════════════════════════
+
+Documente:
+- INSTALL_AMD.md - Ghid complet
+- README_AMD.md - Documentație tehnică
+- INSTRUCTIUNI_FINALE_ROMANA.txt - Manual detaliat
+
+Linkuri:
+- BTCW: https://github.com/bitcoin-pow
+- AMD Drivers: https://www.amd.com/en/support
+- Visual Studio: https://visualstudio.microsoft.com/
+- CMake: https://cmake.org/
+
+═══════════════════════════════════════════════════════════════════════
+
+GATA! Urmărește pașii 1-5 și minezi în 30 de minute! 🎉
+
+═══════════════════════════════════════════════════════════════════════
